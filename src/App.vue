@@ -1,6 +1,10 @@
 <template>
-  <h1>MealBoard</h1>
+  <NavigationBar />
+  <RouterView />
 </template>
 
-<script setup></script>
+<script setup>
+import NavigationBar from './components/navigationBar.vue'
+</script>
+
 <style scoped></style>
