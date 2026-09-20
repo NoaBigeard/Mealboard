@@ -10,6 +10,7 @@
     "format": "prettier --write --experimental-cli src/"
   },
   "dependencies": {
+    "firebase": "^12.19.0",
     "pinia": "^4.0.2",
     "vue": "rc",
     "vue-router": "^5.2.0"

@@ -51,13 +51,13 @@
             class="recipe-choice"
             role="button"
             tabindex="0"
-            @click="openRecipePicker(day.key, meal.key)"
-            @keydown.enter.prevent="openRecipePicker(day.key, meal.key)"
-            @keydown.space.prevent="openRecipePicker(day.key, meal.key)"
+            @click="openRecipeDetails(getRecipe(day.key, meal.key))"
+            @keydown.enter.prevent="openRecipeDetails(getRecipe(day.key, meal.key))"
+            @keydown.space.prevent="openRecipeDetails(getRecipe(day.key, meal.key))"
           >
             <span class="recipe-badge"><b>Recette</b></span>
             <strong>{{ getRecipe(day.key, meal.key).name }}</strong>
-            <small>{{ getRecipe(day.key, meal.key).description }}</small>
+            <small>Cliquez pour voir la recette</small>
             <button
               class="remove-food recipe-remove"
               type="button"
@@ -204,11 +204,70 @@
         <button class="confirm-button" type="button" @click="closePicker">Terminer</button>
       </section>
     </div>
+
+    <div v-if="recipeDetails" class="modal-backdrop" @click.self="closeRecipeDetails">
+      <section
+        class="recipe-details-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="recipe-details-title"
+      >
+        <div class="modal-heading">
+          <div>
+            <p class="eyebrow">Recette du repas</p>
+            <h2 id="recipe-details-title">{{ recipeDetails.name }}</h2>
+            <p class="recipe-serving">{{ recipeDetails.servings }} portions</p>
+          </div>
+          <button
+            class="close-button"
+            type="button"
+            aria-label="Fermer"
+            @click="closeRecipeDetails"
+          >
+            ×
+          </button>
+        </div>
+
+        <div class="recipe-details-content">
+          <section v-if="recipeDetails.ingredients?.length" class="recipe-details-section">
+            <h3>Ingrédients</h3>
+            <ul>
+              <li
+                v-for="(ingredient, index) in recipeDetails.ingredients"
+                :key="`${recipeDetails.id}-ingredient-${index}`"
+              >
+                {{ ingredient }}
+              </li>
+            </ul>
+          </section>
+          <section v-if="recipeDetails.steps?.length" class="recipe-details-section">
+            <h3>Étapes</h3>
+            <ol>
+              <li
+                v-for="(step, index) in recipeDetails.steps"
+                :key="`${recipeDetails.id}-step-${index}`"
+              >
+                {{ step }}
+              </li>
+            </ol>
+          </section>
+          <p
+            v-if="!recipeDetails.ingredients?.length && !recipeDetails.steps?.length"
+            class="no-result"
+          >
+            Cette recette ne contient pas encore de détails.
+          </p>
+        </div>
+      </section>
+    </div>
   </main>
 </template>
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { loadRecipes } from '@/stores/recipes'
+import { loadProducts } from '@/stores/products'
+import { onSync, syncCurrentState } from '@/services/firebaseSync'
 
 const currentDate = ref(new Date())
 const search = ref('')
@@ -221,28 +280,11 @@ const categories = [
   { key: 'vegetable', label: 'Légumes' },
   { key: 'protein', label: 'Protéines' },
 ]
-const foods = [
-  { id: 'rice', name: 'Riz', category: 'starch' },
-  { id: 'pasta', name: 'Pâtes', category: 'starch' },
-  { id: 'potato', name: 'Pommes de terre', category: 'starch' },
-  { id: 'couscous', name: 'Couscous', category: 'starch' },
-  { id: 'quinoa', name: 'Quinoa', category: 'starch' },
-  { id: 'green-beans', name: 'Haricots verts', category: 'vegetable' },
-  { id: 'carrot', name: 'Carottes', category: 'vegetable' },
-  { id: 'zucchini', name: 'Courgettes', category: 'vegetable' },
-  { id: 'tomato', name: 'Tomates', category: 'vegetable' },
-  { id: 'chicken', name: 'Poulet', category: 'protein' },
-  { id: 'egg', name: 'Œufs', category: 'protein' },
-  { id: 'salmon', name: 'Saumon', category: 'protein' },
-  { id: 'lentils', name: 'Lentilles', category: 'protein' },
-]
-const recipes = [
-  { id: 'pizza-salad', name: 'Pizza + salade', description: 'Repas complet' },
-  { id: 'quiche-salad', name: 'Quiche + salade', description: 'Repas complet' },
-  { id: 'curry-chicken', name: 'Curry de poulet', description: 'Plat préparé' },
-  { id: 'lasagna', name: 'Lasagnes', description: 'Plat préparé' },
-]
+const foods = loadProducts()
+const recipes = loadRecipes()
 const meals = ref(loadMeals())
+const recipeDetails = ref(null)
+let stopSyncListener = null
 const picker = reactive({
   open: false,
   dayKey: '',
@@ -366,18 +408,39 @@ function openRecipePicker(dayKey, mealKey) {
   picker.open = true
 }
 
+function openRecipeDetails(recipe) {
+  recipeDetails.value = recipe
+}
+
+function closeRecipeDetails() {
+  recipeDetails.value = null
+}
+
 function closePicker() {
   picker.open = false
 }
 
 function handleKeydown(event) {
-  if (event.key === 'Escape' && picker.open) {
+  if (event.key !== 'Escape') return
+  if (recipeDetails.value) {
+    closeRecipeDetails()
+    return
+  }
+  if (picker.open) {
     closePicker()
   }
 }
 
-onMounted(() => document.addEventListener('keydown', handleKeydown))
-onBeforeUnmount(() => document.removeEventListener('keydown', handleKeydown))
+onMounted(() => {
+  document.addEventListener('keydown', handleKeydown)
+  stopSyncListener = onSync(() => {
+    meals.value = loadMeals()
+  })
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', handleKeydown)
+  stopSyncListener?.()
+})
 
 function isSelected(foodId) {
   return getFood(picker.dayKey, picker.mealKey, picker.category)?.id === foodId
@@ -450,9 +513,14 @@ function migrateMeals(storedMeals) {
   )
 }
 
-watch(meals, (value) => localStorage.setItem('mealboard-meals', JSON.stringify(value)), {
-  deep: true,
-})
+watch(
+  meals,
+  (value) => {
+    localStorage.setItem('mealboard-meals', JSON.stringify(value))
+    syncCurrentState()
+  },
+  { deep: true },
+)
 </script>
 
 <style scoped>
@@ -648,6 +716,54 @@ h1 {
     12px Arial,
     sans-serif;
   text-align: center;
+}
+.recipe-details-modal {
+  background: #f1f4ed;
+  border-radius: 24px 24px 0 0;
+  max-height: 92vh;
+  max-width: 680px;
+  overflow-y: auto;
+  padding: 28px 24px 30px;
+  width: 100%;
+}
+.recipe-details-modal h2 {
+  margin-bottom: 6px;
+}
+.recipe-serving {
+  color: #758477;
+  font:
+    13px Arial,
+    sans-serif;
+  margin: 0;
+}
+.recipe-details-content {
+  display: grid;
+  gap: 24px;
+  margin-top: 24px;
+}
+.recipe-details-section h3 {
+  color: #294d41;
+  font:
+    700 15px Arial,
+    sans-serif;
+  margin: 0 0 10px;
+}
+.recipe-details-section ul,
+.recipe-details-section ol {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding-left: 24px;
+}
+.recipe-details-section li {
+  color: #35443b;
+  font:
+    15px/1.5 Arial,
+    sans-serif;
+}
+.recipe-details-section li::marker {
+  color: #ed9417;
+  font-weight: 700;
 }
 .recipe-remove {
   align-self: center;
