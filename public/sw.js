@@ -1,7 +1,10 @@
 const CACHE_NAME = 'mealboard-v1'
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(['/', '/Planning'])))
+  const basePath = new URL('./', self.registration.scope).pathname
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll([basePath, `${basePath}Planning`])),
+  )
 })
 
 self.addEventListener('fetch', (event) => {
