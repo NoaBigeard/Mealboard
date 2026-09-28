@@ -16,6 +16,7 @@ const SYNC_EVENT = 'mealboard-sync'
 let householdReference = null
 let stopListening = null
 let isWritingRemoteState = false
+let pendingLocalState = null
 
 function readJson(key, fallback) {
   try {
@@ -27,13 +28,31 @@ function readJson(key, fallback) {
 
 function readLocalState() {
   return {
+    family: readJson('mealboard-family-settings', { enabled: false, people: [] }),
+    dayHosts: readJson('mealboard-day-hosts', {}),
     meals: readJson('mealboard-meals', {}),
     recipes: readJson('mealboard-recipes', []),
     products: readJson('mealboard-products', []),
   }
 }
 
+function serializeComparableState(value) {
+  if (Array.isArray(value)) return JSON.stringify(value.map(serializeComparableState))
+  if (value && typeof value === 'object') {
+    return JSON.stringify(
+      Object.fromEntries(
+        Object.entries(value)
+          .filter(([, childValue]) => childValue !== null && childValue !== undefined)
+          .map(([key, childValue]) => [key, serializeComparableState(childValue)]),
+      ),
+    )
+  }
+  return JSON.stringify(value)
+}
+
 function applyRemoteState(state) {
+  if (state.family) localStorage.setItem('mealboard-family-settings', JSON.stringify(state.family))
+  if (state.dayHosts) localStorage.setItem('mealboard-day-hosts', JSON.stringify(state.dayHosts))
   if (state.meals) localStorage.setItem('mealboard-meals', JSON.stringify(state.meals))
   if (state.recipes) localStorage.setItem('mealboard-recipes', JSON.stringify(state.recipes))
   if (state.products) localStorage.setItem('mealboard-products', JSON.stringify(state.products))
@@ -52,6 +71,12 @@ export function subscribeToHousehold(code) {
   stopListening = onValue(householdReference, async (snapshot) => {
     const remoteState = snapshot.val()
     if (remoteState) {
+      const remoteStateJson = serializeComparableState(remoteState)
+      if (pendingLocalState && pendingLocalState !== remoteStateJson) {
+        await syncCurrentState()
+        return
+      }
+      pendingLocalState = null
       isWritingRemoteState = true
       applyRemoteState(remoteState)
       isWritingRemoteState = false
@@ -63,7 +88,9 @@ export function subscribeToHousehold(code) {
 
 export async function syncCurrentState() {
   if (!householdReference || isWritingRemoteState) return
-  await set(householdReference, readLocalState())
+  const localState = readLocalState()
+  pendingLocalState = serializeComparableState(localState)
+  await set(householdReference, localState)
 }
 
 export function onSync(callback) {
@@ -75,4 +102,5 @@ export function stopHouseholdSync() {
   if (stopListening) stopListening()
   stopListening = null
   householdReference = null
+  pendingLocalState = null
 }

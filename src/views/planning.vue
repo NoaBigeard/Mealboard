@@ -29,10 +29,29 @@
         :key="day.key"
         class="planning-card"
         :class="{ today: day.isToday }"
+        :style="dayCardStyle(day.key)"
       >
         <div class="day-heading">
-          <h2>{{ day.name }}</h2>
-          <span>{{ day.number }} {{ day.month }}</span>
+          <div class="day-title">
+            <h2>{{ day.name }}</h2>
+          </div>
+          <label
+            v-if="familyFeatureEnabled"
+            class="host-picker"
+            :style="{ '--host-color': getHost(day.key)?.color || '#294d41' }"
+          >
+            <select
+              v-model="dayHosts[day.key]"
+              :aria-label="`Chez qui pour ${day.name}`"
+              @change="persistDayHosts"
+            >
+              <option value="">À choisir</option>
+              <option v-for="person in familyPeople" :key="person.id" :value="person.id">
+                {{ person.name }}
+              </option>
+            </select>
+          </label>
+          <span class="day-date">{{ day.number }} {{ day.month }}</span>
         </div>
 
         <div v-for="meal in mealTypes" :key="meal.key" class="meal-block">
@@ -268,6 +287,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { loadRecipes } from '@/stores/recipes'
 import { loadProducts } from '@/stores/products'
 import { onSync, syncCurrentState } from '@/services/firebaseSync'
+import { loadDayHosts, loadFamilySettings, saveDayHosts } from '@/stores/household'
 
 const currentDate = ref(new Date())
 const search = ref('')
@@ -283,6 +303,8 @@ const categories = [
 const foods = loadProducts()
 const recipes = loadRecipes()
 const meals = ref(loadMeals())
+const familySettings = ref(loadFamilySettings())
+const dayHosts = ref(loadDayHosts())
 const recipeDetails = ref(null)
 let stopSyncListener = null
 const picker = reactive({
@@ -294,6 +316,37 @@ const picker = reactive({
   categoryLabel: '',
   mode: 'food',
 })
+const familyFeatureEnabled = computed(
+  () => familySettings.value.enabled && familySettings.value.people.length > 0,
+)
+const familyPeople = computed(() => familySettings.value.people)
+
+function getHost(dayKey) {
+  return familyPeople.value.find((person) => person.id === dayHosts.value[dayKey]) || null
+}
+
+function dayCardStyle(dayKey) {
+  const host = getHost(dayKey)
+  if (!host?.color) return {}
+  return {
+    backgroundColor: hexToRgba(host.color, 0.16),
+    borderColor: hexToRgba(host.color, 0.62),
+  }
+}
+
+function hexToRgba(color, alpha) {
+  const hex = color.replace('#', '')
+  if (![3, 6].includes(hex.length) || !/^[0-9a-f]+$/i.test(hex)) return color
+  const value =
+    hex.length === 3
+      ? hex
+          .split('')
+          .map((part) => part + part)
+          .join('')
+      : hex
+  const channels = [0, 2, 4].map((index) => Number.parseInt(value.slice(index, index + 2), 16))
+  return `rgba(${channels.join(', ')}, ${alpha})`
+}
 
 function getMonday(date) {
   const result = new Date(date)
@@ -435,6 +488,8 @@ onMounted(() => {
   document.addEventListener('keydown', handleKeydown)
   stopSyncListener = onSync(() => {
     meals.value = loadMeals()
+    familySettings.value = loadFamilySettings()
+    dayHosts.value = loadDayHosts()
   })
 })
 onBeforeUnmount(() => {
@@ -479,6 +534,10 @@ function removeRecipe(dayKey, mealKey) {
     ...meals.value,
     [dayKey]: { ...dayMeals, [mealKey]: { ...dayMeals[mealKey], recipe: null } },
   }
+}
+
+function persistDayHosts() {
+  saveDayHosts(dayHosts.value)
 }
 
 function categoryLabel(category) {
@@ -623,22 +682,50 @@ h1 {
   border-bottom: 1px solid #dde4da;
   padding-bottom: 12px;
 }
+.day-title,
+.day-date {
+  flex: 1;
+}
+.day-date {
+  color: #718078;
+  font:
+    700 13px Arial,
+    sans-serif;
+  text-align: right;
+  text-transform: capitalize;
+}
+.host-picker {
+  align-items: center;
+  display: flex;
+  flex: 0 1 150px;
+  justify-content: center;
+}
+.host-picker select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--host-color);
+  cursor: pointer;
+  font:
+    700 16px Arial,
+    sans-serif;
+  max-width: 150px;
+  min-height: 22px;
+  outline: none;
+  padding: 0;
+  text-align: center;
+  width: 100%;
+}
 .day-heading h2 {
   margin: 0;
   font-size: 22px;
   text-transform: capitalize;
 }
 .planning-card.today .day-heading h2,
-.planning-card.today .day-heading span {
+.planning-card.today .day-date {
   color: #294d41;
   font-weight: 700;
-}
-.day-heading span {
-  color: #718078;
-  font:
-    13px Arial,
-    sans-serif;
-  text-transform: capitalize;
 }
 .meal-block {
   background: #eef3eb;

@@ -29,9 +29,17 @@ const defaultRecipes = [
 export function loadRecipes() {
   try {
     const storedRecipes = JSON.parse(localStorage.getItem(RECIPES_STORAGE_KEY) || 'null')
-    return Array.isArray(storedRecipes) ? storedRecipes : defaultRecipes
+    return Array.isArray(storedRecipes) ? storedRecipes.map(normalizeRecipe) : defaultRecipes
   } catch {
     return defaultRecipes
+  }
+}
+
+function normalizeRecipe(recipe) {
+  return {
+    ...recipe,
+    ingredients: Array.isArray(recipe?.ingredients) ? recipe.ingredients : [],
+    steps: Array.isArray(recipe?.steps) ? recipe.steps : [],
   }
 }
 

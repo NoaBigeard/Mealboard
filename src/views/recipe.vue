@@ -26,7 +26,7 @@
       >
         <h2>{{ recipe.name }}</h2>
         <p class="recipe-meta">
-          {{ recipe.ingredients.length || 0 }} ingr. · {{ recipe.servings }} pers.
+          {{ recipe.ingredients?.length || 0 }} ingr. · {{ recipe.servings }} pers.
         </p>
       </article>
     </section>
